@@ -109,8 +109,6 @@ class Trainer:
         epoch_loss = 0
 
         for inputs in self.train_loader:
-            inputs = self._set_inputs_to_device(inputs)
-
             model_output = self.model(inputs)
 
             loss = model_output.loss
@@ -153,8 +151,6 @@ class Trainer:
         epoch_loss = 0
 
         for inputs in self.eval_loader:
-            inputs = self._set_inputs_to_device(inputs)
-
             with torch.no_grad():
                 model_output = self.model(inputs)
 
@@ -171,21 +167,6 @@ class Trainer:
 
         return epoch_loss
 
-    def _set_inputs_to_device(self, inputs: Dict[str, Any]):
-        inputs_on_device = inputs
-
-        # if self.device == "cuda":
-        #     cuda_inputs = dict.fromkeys(inputs)
-
-        #     for key in inputs.keys():
-        #         if torch.is_tensor(inputs[key]):
-        #             cuda_inputs[key] = inputs[key].cuda()
-
-        #         else:
-        #             cuda_inputs[key] = inputs[key]
-        #     inputs_on_device = cuda_inputs
-
-        return inputs_on_device
 
     def _save_model(self, model, dir_path: str):
         if not os.path.exists(dir_path):
@@ -200,11 +181,6 @@ class Trainer:
 
     def _setup_logger(self):
         logging.basicConfig(filename=os.path.join(self.training_dir, "training.log"), level=logging.INFO, format='%(message)s')
-        # f_handler = logging.FileHandler(
-        #     os.path.join(self.training_dir, f"training.log")
-        # )
-        # f_handler.setLevel(logging.INFO)
-        # logger.addHandler(f_handler)
 
     def _prepare_training(self):
         self._set_seed(self.config.seed)

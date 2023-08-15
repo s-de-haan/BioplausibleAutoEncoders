@@ -20,7 +20,7 @@ def main():
         "decoder_layers": [16, 512, 784],
         "lr": 1e-4,
         "batch_size": 128,
-        "epochs": 2,
+        "epochs": 200,
         "num_workers": 4,
         "optimizer": "Adam",
         "scheduler": "CosineAnnealingLR",
