@@ -166,7 +166,6 @@ class MetricConsolePrinterCallback(TrainingCallback):
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-        # make it print to the console.
         console = logging.StreamHandler()
         self.logger.addHandler(console)
         self.logger.setLevel(logging.INFO)
@@ -178,11 +177,11 @@ class MetricConsolePrinterCallback(TrainingCallback):
             epoch_eval_loss = logs.epoch_eval_loss
             if epoch_eval_loss is not None:
                 self.logger.info(
-                    f"\t\t\t\tEpoch: {epoch}, Train loss: {np.round(epoch_train_loss, 4)} & Eval loss: {np.round(epoch_eval_loss, 4)}"
+                    f"\t\t\t\tEpoch: {epoch:03}, Train loss: {np.round(epoch_train_loss, 4):.4f} & Eval loss: {np.round(epoch_eval_loss, 4):.4f}"
                 )
             else:
                 self.logger.info(
-                    f"\t\t\t\tEpoch: {epoch}, Train loss: {np.round(epoch_train_loss, 4)}"
+                    f"\t\t\t\tEpoch: {epoch:03}, Train loss: {np.round(epoch_train_loss, 4):.4f}"
                 )
 
 
