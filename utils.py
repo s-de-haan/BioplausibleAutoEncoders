@@ -28,3 +28,9 @@ class ModelOutput(OrderedDict):
         Convert self to a tuple containing all the attributes/keys that are not ``None``.
         """
         return tuple(self[k] for k in self.keys())
+
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
