@@ -1,4 +1,5 @@
 import datetime
+import json
 from typing import Any, Dict
 import torch
 import os
@@ -6,17 +7,15 @@ import logging
 
 from copy import deepcopy
 from torch.utils.data import DataLoader
-from callbacks import (
+from src.callbacks import (
     CallbackHandler,
     MetricConsolePrinterCallback,
     ProgressBarCallback,
     TrainingCallback,
 )
-from utils import dotdict
-
+from src.utils import dotdict
 
 logger = logging.getLogger(__name__)
-
 
 class Trainer:
     def __init__(self, model, train, eval, config, callbacks=None) -> None:
@@ -48,7 +47,7 @@ class Trainer:
         self.callback_handler.on_train_begin(training_config=self.config)
 
         logger.info(
-            msg=f"Training:\n - epochs: {self.config.epochs}\n - batch_size: {self.config.batch_size}\n"
+            msg=f"Training:\n - epochs: {self.config.epochs}\n - batch_size: {self.config.batch_size}\n - optimizer: {self.config.optimizer}\n - scheduler: {self.config.scheduler}\n - device: {self.config.device}\n - output_dir: {self.config.output_dir}\n - seed: {self.config.seed}\n - encoder_layers: {self.config.encoder_layers}\n - decoder_layers: {self.config.decoder_layers}\n - learning_rate: {self.config.lr}\n - gamma: {self.config.gamma}\n - patience: {self.config.patience}\n - num_workers: {self.config.num_workers}\n - training_dir: {self.training_dir}\n - training_signature: {self._training_signature}\n - model: {self.model.module.name}\n"
         )
 
         # TODO log to output dir with get_file_logger
@@ -68,7 +67,6 @@ class Trainer:
             epoch_train_loss = self._train_step(epoch)
             metrics.epoch_train_loss = epoch_train_loss
 
-
             if self.eval_loader is not None:
                 epoch_eval_loss = self._eval_step(epoch)
                 metrics.epoch_eval_loss = epoch_eval_loss
@@ -77,10 +75,8 @@ class Trainer:
                 best_eval_loss = epoch_eval_loss
                 best_model = deepcopy(self.model)
                 self._best_model = best_model
-            elif epoch_train_loss < best_train_loss and self.eval_loader is None:
+            if epoch_train_loss < best_train_loss:
                 best_train_loss = epoch_train_loss
-                best_model = deepcopy(self.model)
-                self._best_model = best_model
 
             self.callback_handler.on_epoch_end(training_config=self.config)
             self.callback_handler.on_log(
@@ -90,8 +86,8 @@ class Trainer:
                 epoch=epoch,
             )
 
-        final_dir = os.path.join(self.training_dir, "final_model")
-        self._save_model(best_model, dir_path=final_dir)
+        self._save_model(best_model, dir_path=self.training_dir)
+        logger.info(f"\nBest train loss: {best_train_loss}, Best eval loss: {best_eval_loss}")
 
     def _train_step(self, epoch: int):
         """The trainer performs training loop over the train_loader.
@@ -195,35 +191,27 @@ class Trainer:
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
 
-        model.save(dir_path)
+        torch.save(model.state_dict(), os.path.join(dir_path, "model.pt"))
 
-        self.training_config.save_json(dir_path, "training_config")
+        with open(os.path.join(dir_path, "config.json"), "w") as fp:
+            json.dump(self.config, fp)
 
-        self.callback_handler.on_save(self.training_config)
+        self.callback_handler.on_save(self.config)
 
-    def _get_file_logger(self, output_dir: str):
-        if not os.path.exists(output_dir) and self.is_main_process:
-            os.makedirs(output_dir, exist_ok=True)
-
-        log_name = f"training_logs_{self._training_signature}"
-
-        file_logger = logging.getLogger(log_name)
-        file_logger.setLevel(logging.INFO)
-        f_handler = logging.FileHandler(
-            os.path.join(output_dir, f"training_logs_{self._training_signature}.log")
-        )
-        f_handler.setLevel(logging.INFO)
-        file_logger.addHandler(f_handler)
-
-        # Do not output logs in the console
-        file_logger.propagate = False
-
-        return file_logger
+    def _setup_logger(self):
+        logging.basicConfig(filename=os.path.join(self.training_dir, "training.log"), level=logging.INFO, format='%(message)s')
+        # f_handler = logging.FileHandler(
+        #     os.path.join(self.training_dir, f"training.log")
+        # )
+        # f_handler.setLevel(logging.INFO)
+        # logger.addHandler(f_handler)
 
     def _prepare_training(self):
         self._set_seed(self.config.seed)
         self._set_optimizer()
+        self._set_scheduler()
         self._set_output_dir()
+        self._setup_logger()
         self._setup_callbacks()
 
     def _set_seed(self, seed: int):
@@ -242,6 +230,28 @@ class Trainer:
         else:
             raise NotImplementedError
 
+    def _set_scheduler(self):
+        if self.config.scheduler == "StepLR":
+            self.scheduler = torch.optim.lr_scheduler.StepLR(
+                self.optimizer, step_size=self.config.lr, gamma=self.config.gamma
+            )
+        elif self.config.scheduler == "ReduceLROnPlateau":
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer,
+                mode="min",
+                factor=self.config.gamma,
+                patience=self.config.patience,
+                verbose=True,
+            )
+        elif self.config.scheduler == "CosineAnnealingLR":
+            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer, T_max=self.config.epochs
+            )
+        elif self.config.scheduler == None:
+            pass
+        else:
+            raise NotImplementedError
+
     def _set_output_dir(self):
         self.output_dir = self.config["output_dir"]
         os.makedirs(self.output_dir, exist_ok=True)
@@ -252,7 +262,7 @@ class Trainer:
 
         training_dir = os.path.join(
             self.config.output_dir,
-            f"{self.model.module.name}_training_{self._training_signature}",
+            f"{self.model.module.name}_{self._training_signature}",
         )
 
         self.training_dir = training_dir

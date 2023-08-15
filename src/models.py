@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from utils import ModelOutput
+from src.utils import ModelOutput
 
 
 class AE(nn.Module):

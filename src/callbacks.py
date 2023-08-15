@@ -181,7 +181,9 @@ class MetricConsolePrinterCallback(TrainingCallback):
                     f"\t\t\t\tEpoch: {epoch}, Train loss: {np.round(epoch_train_loss, 4)} & Eval loss: {np.round(epoch_eval_loss, 4)}"
                 )
             else:
-                self.logger.info(f"\t\t\t\tEpoch: {epoch}, Train loss: {np.round(epoch_train_loss, 4)}")
+                self.logger.info(
+                    f"\t\t\t\tEpoch: {epoch}, Train loss: {np.round(epoch_train_loss, 4)}"
+                )
 
 
 class ProgressBarCallback(TrainingCallback):
