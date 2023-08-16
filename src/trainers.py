@@ -172,7 +172,7 @@ class Trainer:
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
 
-        torch.save(model.state_dict(), os.path.join(dir_path, "model.pt"))
+        torch.save(model.module.state_dict(), os.path.join(dir_path, "model.pt"))
 
         with open(os.path.join(dir_path, "config.json"), "w") as fp:
             json.dump(self.config, fp)
