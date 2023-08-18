@@ -114,7 +114,7 @@ class Trainer:
             loss = model_output.loss
 
             self.optimizer.zero_grad()
-            loss.backward()
+            self.model.module.backward()
             self.optimizer.step()
 
             epoch_loss += loss.item()

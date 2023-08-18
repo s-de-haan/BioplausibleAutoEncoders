@@ -18,10 +18,14 @@ class AE(nn.Module):
         y_hat = self.decoder(z)
 
         loss = self.loss_fn(y_hat, x)
+        self.loss = loss
 
         output = ModelOutput(loss=loss, y_hat=y_hat, z=z)
 
         return output
+
+    def backward(self):
+        self.loss.backward()
 
     def loss_fn(self, y_hat, y):
         return nn.MSELoss()(y_hat, y)  # might be different for convolutions
