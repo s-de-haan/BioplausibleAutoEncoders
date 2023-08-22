@@ -1,5 +1,8 @@
 from collections import OrderedDict
+import multiprocessing
 from typing import Any, Tuple
+
+import torch
 
 
 class ModelOutput(OrderedDict):
@@ -29,8 +32,45 @@ class ModelOutput(OrderedDict):
         """
         return tuple(self[k] for k in self.keys())
 
+
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
+
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+
+def set_device():
+    if torch.cuda.is_available():
+        device = "cuda"
+    if torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+
+    multiprocessing.set_start_method("fork")
+
+    device = "cpu"
+
+    torch.set_default_device(device)
+
+    return device
+
+
+def derivative_sigmoid(x):
+    return torch.mul(torch.sigmoid(x), 1.0 - torch.sigmoid(x))
+
+
+def derivative_relu(x):
+    grad = torch.ones_like(x)
+    grad[x < 0] = 0
+    return grad
+
+def get_derivative(activation_fn):
+    if activation_fn == torch.nn.Sigmoid():
+        return derivative_sigmoid
+    elif activation_fn == torch.nn.ReLU():
+        return derivative_relu
+    else:
+        raise ValueError(f"Activation function {activation_fn} not supported")

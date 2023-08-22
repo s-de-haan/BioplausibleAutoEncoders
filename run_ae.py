@@ -1,13 +1,13 @@
+import multiprocessing
 import torch
 import torch.nn as nn
 
 from models.ae import AE, MLP_Decoder, MLP_Encoder
 from src.datasets import MNIST
 from src.trainers import Trainer
-from src.utils import dotdict
+from src.utils import dotdict, set_device
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
+device = set_device()
 
 def main():
     # Load data
@@ -20,10 +20,10 @@ def main():
         "decoder_layers": [32, 256, 784],
         "lr": 1e-4,
         "batch_size": 128,
-        "epochs": 25,
-        "num_workers": 4,
+        "epochs": 2,
+        "num_workers": 6,
         "optimizer": "Adam",
-        "scheduler": None, #"CosineAnnealingLR",
+        "scheduler": None,  # "CosineAnnealingLR",
         "device": device,
         "output_dir": "./outputs",
         "seed": 1337,
@@ -31,11 +31,13 @@ def main():
     config = dotdict(config)
 
     # Train model
-    model = AE(encoder=MLP_Encoder(config.encoder_layers), decoder=MLP_Decoder(config.decoder_layers))
+    model = AE(
+        encoder=MLP_Encoder(config.encoder_layers),
+        decoder=MLP_Decoder(config.decoder_layers),
+    )
     trainer = Trainer(model, train, eval, config)
     trainer.train()
 
-    # Evaluate model
 
 if __name__ == "__main__":
     main()

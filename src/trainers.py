@@ -24,14 +24,17 @@ class Trainer:
         self.config = config
         self.device = self.config.device
 
-        if config.device == "cuda":
+        self._set_device(self.config.device)
+
+        if config.device == "cuda" or config.device == "mps":
             self.model = torch.nn.DataParallel(self.model)
         model.to(self.device)
 
         self.train_loader = DataLoader(
             dataset=train,
-            batch_size=self.config.batch_size,
             num_workers=self.config.num_workers,
+            batch_size=self.config.batch_size,
+            pin_memory=True,
             shuffle=True,
         )
 
@@ -39,6 +42,7 @@ class Trainer:
             dataset=eval,
             batch_size=self.config.batch_size,
             num_workers=self.config.num_workers,
+            pin_memory=True,
             shuffle=True,
         )
 
@@ -47,7 +51,7 @@ class Trainer:
         self.callback_handler.on_train_begin(training_config=self.config)
 
         logger.info(
-            msg=f"Training:\n - epochs: {self.config.epochs}\n - batch_size: {self.config.batch_size}\n - optimizer: {self.config.optimizer}\n - scheduler: {self.config.scheduler}\n - device: {self.config.device}\n - output_dir: {self.config.output_dir}\n - seed: {self.config.seed}\n - encoder_layers: {self.config.encoder_layers}\n - decoder_layers: {self.config.decoder_layers}\n - learning_rate: {self.config.lr}\n - gamma: {self.config.gamma}\n - patience: {self.config.patience}\n - num_workers: {self.config.num_workers}\n - training_dir: {self.training_dir}\n - training_signature: {self._training_signature}\n - model: {self.model.module.name}\n"
+            msg=f"Training:\n - epochs: {self.config.epochs}\n - batch_size: {self.config.batch_size}\n - optimizer: {self.config.optimizer}\n - scheduler: {self.config.scheduler}\n - device: {self.config.device}\n - output_dir: {self.config.output_dir}\n - seed: {self.config.seed}\n - encoder_layers: {self.config.encoder_layers}\n - decoder_layers: {self.config.decoder_layers}\n - learning_rate: {self.config.lr}\n - gamma: {self.config.gamma}\n - patience: {self.config.patience}\n - num_workers: {self.config.num_workers}\n - training_dir: {self.training_dir}\n - training_signature: {self._training_signature}\n - model: {self.model.name}\n"
         )
 
         # TODO log to output dir with get_file_logger
@@ -109,12 +113,13 @@ class Trainer:
         epoch_loss = 0
 
         for inputs in self.train_loader:
+            inputs = inputs.to(self.device)
             model_output = self.model(inputs)
 
             loss = model_output.loss
 
             self.optimizer.zero_grad()
-            self.model.module.backward()
+            self.model.backward()
             self.optimizer.step()
 
             epoch_loss += loss.item()
@@ -124,7 +129,7 @@ class Trainer:
 
             self.callback_handler.on_train_step_end(training_config=self.config)
 
-        # self.model.module.update()
+        # self.model.update()
 
         epoch_loss /= len(self.train_loader)
 
@@ -151,6 +156,7 @@ class Trainer:
         epoch_loss = 0
 
         for inputs in self.eval_loader:
+            inputs = inputs.to(self.device)
             with torch.no_grad():
                 model_output = self.model(inputs)
 
@@ -168,11 +174,22 @@ class Trainer:
         return epoch_loss
 
 
+    def _set_device(self, device: str):
+        if device == "cuda":
+            self.device = torch.device("cuda")
+        elif device == "mps":
+            self.device = torch.device("cuda")
+            torch.backends.mps.initialize(self.device)
+        elif device == "cpu":
+            self.device = torch.device("cpu")
+        else:
+            raise NotImplementedError
+
     def _save_model(self, model, dir_path: str):
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
 
-        torch.save(model.module.state_dict(), os.path.join(dir_path, "model.pt"))
+        torch.save(model.state_dict(), os.path.join(dir_path, "model.pt"))
 
         with open(os.path.join(dir_path, "config.json"), "w") as fp:
             json.dump(self.config, fp)
@@ -238,7 +255,7 @@ class Trainer:
 
         training_dir = os.path.join(
             self.config.output_dir,
-            f"{self.model.module.name}_{self._training_signature}",
+            f"{self.model.name}_{self._training_signature}",
         )
 
         self.training_dir = training_dir

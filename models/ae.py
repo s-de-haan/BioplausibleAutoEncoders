@@ -1,80 +1,15 @@
 import torch
 import torch.nn as nn
+from models.network import Network
 from src.utils import ModelOutput
 
 
-class AE(nn.Module):
+class AE(Network):
 
     """Vanilla Autoencoder"""
 
-    def __init__(self, encoder, decoder, name="AE") -> None:
-        super(AE, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.name = name
-
-    def forward(self, x):
-        z = self.encoder(x)
-        y_hat = self.decoder(z)
-
-        loss = self.loss_fn(y_hat, x)
-        self.loss = loss
-
-        output = ModelOutput(loss=loss, y_hat=y_hat, z=z)
-
-        return output
+    def __init__(self, encoder, decoder) -> None:
+        super().__init__(self, encoder, decoder, name="AE")
 
     def backward(self):
         self.loss.backward()
-
-    def loss_fn(self, y_hat, y):
-        return nn.MSELoss()(y_hat, y)  # might be different for convolutions
-
-
-class MLP_Encoder(nn.Module):
-
-    """Multilayer perceptron"""
-
-    def __init__(self, layers) -> None:
-        super(MLP_Encoder, self).__init__()
-        assert (
-            len(layers) > 2
-        ), "layers must be a list of integers, starting with input_dim, ending with output_dim"
-
-        self.layers = nn.ModuleList()
-
-        for i in range(len(layers) - 1):
-            self.layers.append(
-                nn.Sequential(nn.Linear(layers[i], layers[i + 1]), nn.ReLU())
-            )
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
-
-
-class MLP_Decoder(nn.Module):
-
-    """Multilayer perceptron"""
-
-    def __init__(self, layers) -> None:
-        super(MLP_Decoder, self).__init__()
-        assert (
-            len(layers) > 2
-        ), "layers must be a list of integers, starting with input_dim, ending with output_dim"
-
-        self.layers = nn.ModuleList()
-
-        for i in range(len(layers) - 2):
-            self.layers.append(
-                nn.Sequential(nn.Linear(layers[i], layers[i + 1]), nn.ReLU())
-            )
-        self.layers.append(
-            nn.Sequential(nn.Linear(layers[i + 1], layers[i + 2]), nn.Sigmoid())
-        )
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
