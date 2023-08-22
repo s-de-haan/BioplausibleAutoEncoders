@@ -1,5 +1,8 @@
 import torch
-from models.dfc import DFC, DFC_Encoder, DFC_Decoder
+import torch.nn as nn
+
+from models.coders import Structure
+from models.dfc import DFC, DFC_layer
 from src.datasets import MNIST
 from src.trainers import Trainer
 from src.utils import dotdict, set_device
@@ -33,9 +36,12 @@ def main():
     config = dotdict(config)
 
     # Train model
+    structure = Structure(
+        DFC_layer, config.encoder_layers, config.decoder_layers, nn.ReLU(), nn.Sigmoid()
+    )
     model = DFC(
-        encoder=DFC_Encoder(config.encoder_layers),
-        decoder=DFC_Decoder(config.decoder_layers),
+        encoder=structure.encoder,
+        decoder=structure.decoder,
         config=config,
     )
     trainer = Trainer(model, train, eval, config)

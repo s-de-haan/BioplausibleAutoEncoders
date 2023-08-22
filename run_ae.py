@@ -1,5 +1,4 @@
-import multiprocessing
-import torch
+from ctypes import Structure
 import torch.nn as nn
 
 from models.ae import AE, MLP_Decoder, MLP_Encoder
@@ -8,6 +7,7 @@ from src.trainers import Trainer
 from src.utils import dotdict, set_device
 
 device = set_device()
+
 
 def main():
     # Load data
@@ -31,9 +31,12 @@ def main():
     config = dotdict(config)
 
     # Train model
+    structure = Structure(
+        nn.Linear, config.encoder_layers, config.decoder_layers, nn.ReLU(), nn.Sigmoid()
+    )
     model = AE(
-        encoder=MLP_Encoder(config.encoder_layers),
-        decoder=MLP_Decoder(config.decoder_layers),
+        encoder=structure.encoder,
+        decoder=structure.decoder,
     )
     trainer = Trainer(model, train, eval, config)
     trainer.train()
