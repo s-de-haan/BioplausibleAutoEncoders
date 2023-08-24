@@ -13,7 +13,7 @@ from src.callbacks import (
     ProgressBarCallback,
     TrainingCallback,
 )
-from src.utils import dotdict
+from src.utils import DataParallelWrapper, dotdict
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,13 @@ class Trainer:
         self._set_device(self.config.device)
 
         if config.device == "cuda" or config.device == "mps":
-            self.model = torch.nn.DataParallel(self.model)
+            self.model = DataParallelWrapper(self.model)
         model.to(self.device)
 
         self.train_loader = DataLoader(
             dataset=train,
-            num_workers=self.config.num_workers,
             batch_size=self.config.batch_size,
+            generator=torch.Generator(device=self.device).manual_seed(self.config.seed),
             pin_memory=True,
             shuffle=True,
         )
@@ -41,7 +41,7 @@ class Trainer:
         self.eval_loader = DataLoader(
             dataset=eval,
             batch_size=self.config.batch_size,
-            num_workers=self.config.num_workers,
+            generator=torch.Generator(device=self.device).manual_seed(self.config.seed),
             pin_memory=True,
             shuffle=True,
         )
@@ -57,6 +57,8 @@ class Trainer:
         # TODO log to output dir with get_file_logger
         best_train_loss = 1e10
         best_eval_loss = 1e10
+
+        self.model.zero_grad()
 
         for epoch in range(1, self.config.epochs + 1):
             self.callback_handler.on_epoch_begin(
@@ -129,12 +131,11 @@ class Trainer:
 
             self.callback_handler.on_train_step_end(training_config=self.config)
 
-        # self.model.update()
-
         epoch_loss /= len(self.train_loader)
 
         return epoch_loss
 
+    @torch.no_grad()
     def _eval_step(self, epoch: int):
         """Perform an evaluation step
 
@@ -178,8 +179,7 @@ class Trainer:
         if device == "cuda":
             self.device = torch.device("cuda")
         elif device == "mps":
-            self.device = torch.device("cuda")
-            torch.backends.mps.initialize(self.device)
+            self.device = torch.device("mps")
         elif device == "cpu":
             self.device = torch.device("cpu")
         else:

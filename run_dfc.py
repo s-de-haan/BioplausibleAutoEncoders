@@ -21,10 +21,10 @@ def main():
     config = {
         "encoder_layers": [784, 512, 16],
         "decoder_layers": [16, 512, 784],
-        "lr": 1e-4,
-        "batch_size": 2048,
+        "lr": 1e-3,
+        "batch_size": 128,
         "epochs": 200,
-        "num_workers": 4,
+        "num_workers": 6,
         "optimizer": "Adam",
         "scheduler": "CosineAnnealingLR",
         "device": device,
@@ -46,8 +46,6 @@ def main():
     )
     trainer = Trainer(model, train, eval, config)
     trainer.train()
-
-    # Evaluate model
 
 
 if __name__ == "__main__":

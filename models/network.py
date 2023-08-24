@@ -1,14 +1,17 @@
 from src.utils import ModelOutput
 import torch.nn as nn
 
+
 class Network(nn.Module):
-    def __init__(
-        self, encoder, decoder, name="Network"
-    ) -> None:
+    def __init__(self, encoder, decoder, name="Network") -> None:
         super(Network, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.name = name
+
+    @property
+    def layers(self):
+        return self.encoder.layers + self.decoder.layers
 
     def forward(self, x):
         self.input = x

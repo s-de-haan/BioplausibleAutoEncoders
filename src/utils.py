@@ -3,6 +3,7 @@ import multiprocessing
 from typing import Any, Tuple
 
 import torch
+import torch.nn as nn
 
 
 class ModelOutput(OrderedDict):
@@ -67,10 +68,22 @@ def derivative_relu(x):
     grad[x < 0] = 0
     return grad
 
+
 def get_derivative(activation_fn):
-    if activation_fn == torch.nn.Sigmoid():
+    if isinstance(activation_fn, torch.nn.Sigmoid):
         return derivative_sigmoid
-    elif activation_fn == torch.nn.ReLU():
+    elif isinstance(activation_fn, torch.nn.ReLU):
         return derivative_relu
     else:
         raise ValueError(f"Activation function {activation_fn} not supported")
+
+class DataParallelWrapper(nn.DataParallel):
+    def __init__(self, module):
+        super().__init__(module)
+
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)

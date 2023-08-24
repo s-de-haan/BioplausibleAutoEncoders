@@ -1,24 +1,22 @@
+import time
 import torch
 import torch.nn as nn
-import numpy as np
+import datetime
 
 from models.network import Network
 from src.utils import get_derivative
 
 
 class DFC(Network):
-    def __init__(self, encoder, decoder, config, name="DFC") -> None:
-        super().__init__(self, encoder, decoder, name=name)
+    def __init__(self, encoder, decoder, config) -> None:
+        super().__init__(encoder, decoder, name="DFC")
 
         # Last layer should have identity feedback
+        self.layers = self.encoder.layers + self.decoder.layers
         self.layers[-1].feedback = torch.eye(self.layers[-1].shape[0])
 
         self._target_lr = config.target_lr
         self._alpha_di = config.alpha_di
-
-    @property
-    def layers(self):
-        return self.encoder.layers + self.decoder.layers
 
     @property
     def layer_sizes(self):
@@ -53,36 +51,40 @@ class DFC(Network):
             for layer in self.layers
         ]
 
-        bsz = self.layers[0].shape[0]
-        output_sz = self.layers[-1].shape[1]
+        output_sz = self.layers[-1].out_features
+        bsz = self.layers[0].activations.shape[0]
 
         # Last layer
         Js.append(
-            activations_vec[-1].unsqueeze(-1) * torch.eye(output_sz).repeat(bsz, 1, 1)
+            activations_vec[-1].view(bsz, output_sz, 1)
+            * torch.eye(output_sz).repeat(bsz, 1, 1)
         )
         # Rest of the layers
-        for i in range(len(self.layers) - 1, -1, -1):
+        for i in range(len(self.layers) - 2, -1, -1):
             J = activations_vec[i].unsqueeze(1) * torch.matmul(
-                J, self.layers[i + 1].weights
+                Js[-1], self.layers[i + 1].weights
             )
             Js.append(J)
 
         Js.reverse()
 
-        return torch.stack(Js, dim=1)
+        return torch.cat(Js, dim=2)
 
-    def _non_dynamical_inversion(self, targets):
+    def _non_dynamical_inversion(self):
         J = self._calculate_full_jacobian()
         J_T = J.transpose(1, 2)
 
         error = self.targets - self.y_hat
         error = error.unsqueeze(2)
 
-        u = torch.solve(
-            error, torch.matmul(J, J_T) + self._alpha_di * torch.eye(J.shape[1])
-        )[0].squeeze(-1)
-        delta_v = torch.matmul(J_T, u.unsqueeze(2)).squeeze(-1)
-        delta_vs = torch.split(delta_v, torch.cumsum(self.layer_sizes, dim=0), dim=1)
+        u = torch.linalg.solve(
+            torch.matmul(J, J_T) + self._alpha_di * torch.eye(J.shape[1]), error
+        )
+
+        delta_v = torch.matmul(J_T, u).squeeze(-1)
+        delta_vs = torch.tensor_split(
+            delta_v, torch.cumsum(torch.tensor(self.layer_sizes[:-1]), dim=0), dim=1
+        )
 
         vs = []
         rs = [self.input]
@@ -114,7 +116,7 @@ class DFC_layer(nn.Module):
         self.activation_derivative = get_derivative(self.activation_fn)
 
         self.feedforward = nn.Sequential(
-            nn.Linear(self.in_features, self.out_features), self.activation
+            nn.Linear(self.in_features, self.out_features), self.activation_fn
         )
         nn.init.kaiming_normal_(self.feedforward[0].weight)
         self._weights = self.feedforward[0].weight
@@ -127,6 +129,10 @@ class DFC_layer(nn.Module):
     @property
     def bias(self):
         return self._bias
+
+    @property
+    def shape(self):
+        return self._weights.shape
 
     def forward(self, x):
         a = torch.matmul(x, self.weights.t())
