@@ -1,5 +1,4 @@
 from collections import OrderedDict
-import multiprocessing
 from typing import Any, Tuple
 
 import torch
@@ -45,16 +44,12 @@ class dotdict(dict):
 def set_device():
     if torch.cuda.is_available():
         device = "cuda"
-    if torch.backends.mps.is_available():
+    elif torch.backends.mps.is_available():
         device = "mps"
     else:
         device = "cpu"
 
-    multiprocessing.set_start_method("fork")
-
-    device = "cpu"
-
-    torch.set_default_device(device)
+    # multiprocessing.set_start_method("fork")
 
     return device
 
@@ -76,14 +71,3 @@ def get_derivative(activation_fn):
         return derivative_relu
     else:
         raise ValueError(f"Activation function {activation_fn} not supported")
-
-class DataParallelWrapper(nn.DataParallel):
-    def __init__(self, module):
-        super().__init__(module)
-
-
-    def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.module, name)

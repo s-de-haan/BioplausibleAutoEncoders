@@ -1,7 +1,6 @@
 import time
 import torch
 import torch.nn as nn
-import datetime
 
 from models.network import Network
 from src.utils import get_derivative
@@ -17,7 +16,7 @@ class DFC(Network):
 
         self._target_lr = config.target_lr
         self._alpha_di = config.alpha_di
-
+        
     @property
     def layer_sizes(self):
         return [layer.out_features for layer in self.layers]
@@ -45,23 +44,41 @@ class DFC(Network):
 
     def _calculate_full_jacobian(self):
         Js = []
-
-        activations_vec = [
+        
+        activations_derivatives = [
             layer.activation_derivative(layer.linear_activations)
             for layer in self.layers
         ]
-
-        output_sz = self.layers[-1].out_features
         bsz = self.layers[0].activations.shape[0]
 
+        # TODO DFC misses bias
+        # start = [
+        #     layer.activation_derivative(layer.linear_activations).unsqueeze(2) * torch.eye(layer.out_features).repeat(bsz, 1, 1)
+        #     for layer in self.layers
+        # ]
+
+        # biases = [layer.bias.unsqueeze(0).expand(bsz, layer.bias.shape[0]) for layer in self.layers[2:]]
+        # start[:-1] = [layer.activation_fn(torch.matmul(A, layer.weights.t())) for A, layer in zip(start[:-1], self.layers[1:])]
+
+        # for i, layer in enumerate(self.layers[2:]):
+        #     start[:i+1] = [layer.activation_fn(torch.matmul(A, layer.weights.t()) + biases[i].unsqueeze(1).expand(-1,A.shape[1],-1)) for A in start[:i+1]]
+
+        # J = torch.cat(start, dim=1)
+        # J = J.transpose(1, 2)
+
+        # return J
+
+
+        output_sz = self.layers[-1].out_features
+        
         # Last layer
         Js.append(
-            activations_vec[-1].view(bsz, output_sz, 1)
+            activations_derivatives[-1].view(bsz, output_sz, 1)
             * torch.eye(output_sz).repeat(bsz, 1, 1)
         )
         # Rest of the layers
         for i in range(len(self.layers) - 2, -1, -1):
-            J = activations_vec[i].unsqueeze(1) * torch.matmul(
+            J = activations_derivatives[i].unsqueeze(1) * torch.matmul(
                 Js[-1], self.layers[i + 1].weights
             )
             Js.append(J)
@@ -69,6 +86,8 @@ class DFC(Network):
         Js.reverse()
 
         return torch.cat(Js, dim=2)
+
+
 
     def _non_dynamical_inversion(self):
         J = self._calculate_full_jacobian()
@@ -83,24 +102,29 @@ class DFC(Network):
 
         delta_v = torch.matmul(J_T, u).squeeze(-1)
         delta_vs = torch.tensor_split(
-            delta_v, torch.cumsum(torch.tensor(self.layer_sizes[:-1]), dim=0), dim=1
+            delta_v, torch.cumsum(torch.tensor(self.layer_sizes[:-1]), dim=0).cpu(), dim=1
         )
 
-        vs = []
         rs = [self.input]
 
         for i, layer in enumerate(self.layers):
-            vs.append(
-                delta_vs[i]
-                + torch.matmul(rs[i], layer.weights.t())
-                + layer.bias.unsqueeze(0)
-            )
-            rs.append(layer.activation_fn(vs[i]))
-            layer.target = vs[i]
-            layer.delta_v = delta_vs[i]
-            layer.r_prev = rs[i]
+            v_ff = torch.matmul(rs[i], layer.weights.t())
+            v_ff += layer.bias.unsqueeze(0).expand_as(v_ff)
+            v = v_ff + delta_vs[i]
 
-        self.u = u
+            r_ff = layer.activation_fn(v_ff)
+            r = layer.activation_fn(v)
+            rs.append(r)
+
+            layer.v_ff = v_ff
+            layer.v = v
+            layer.delta_v = delta_vs[i]
+            
+            layer.r = r
+            layer.r_ff = r_ff
+            layer.r_prev = rs[i]
+            
+        # self.u = u
 
 
 class DFC_layer(nn.Module):
@@ -143,11 +167,7 @@ class DFC_layer(nn.Module):
         return self.activations
 
     def backward(self):
-        v_ff = torch.matmul(self.r_prev, self.feedforward[0].weight.t())
-        v_ff += self.feedforward[0].bias.unsqueeze(0).expand_as(v_ff)
-        v = v_ff + self.delta_v
-
-        teaching_signal = self.activation_fn(v) - self.activation_fn(v_ff)
+        teaching_signal = self.r - self.r_ff
 
         bsz = self.r_prev.shape[0]
         weights_grad = -2 * 1.0 / bsz * teaching_signal.t().mm(self.r_prev)

@@ -1,6 +1,5 @@
 import datetime
 import json
-from typing import Any, Dict
 import torch
 import os
 import logging
@@ -13,7 +12,7 @@ from src.callbacks import (
     ProgressBarCallback,
     TrainingCallback,
 )
-from src.utils import DataParallelWrapper, dotdict
+from src.utils import dotdict
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +25,13 @@ class Trainer:
 
         self._set_device(self.config.device)
 
-        if config.device == "cuda" or config.device == "mps":
-            self.model = DataParallelWrapper(self.model)
         model.to(self.device)
 
         self.train_loader = DataLoader(
             dataset=train,
             batch_size=self.config.batch_size,
             generator=torch.Generator(device=self.device).manual_seed(self.config.seed),
+            num_workers=config.num_workers,
             pin_memory=True,
             shuffle=True,
         )
@@ -42,6 +40,7 @@ class Trainer:
             dataset=eval,
             batch_size=self.config.batch_size,
             generator=torch.Generator(device=self.device).manual_seed(self.config.seed),
+            num_workers=config.num_workers,
             pin_memory=True,
             shuffle=True,
         )
@@ -51,7 +50,7 @@ class Trainer:
         self.callback_handler.on_train_begin(training_config=self.config)
 
         logger.info(
-            msg=f"Training:\n - epochs: {self.config.epochs}\n - batch_size: {self.config.batch_size}\n - optimizer: {self.config.optimizer}\n - scheduler: {self.config.scheduler}\n - device: {self.config.device}\n - output_dir: {self.config.output_dir}\n - seed: {self.config.seed}\n - encoder_layers: {self.config.encoder_layers}\n - decoder_layers: {self.config.decoder_layers}\n - learning_rate: {self.config.lr}\n - gamma: {self.config.gamma}\n - patience: {self.config.patience}\n - num_workers: {self.config.num_workers}\n - training_dir: {self.training_dir}\n - training_signature: {self._training_signature}\n - model: {self.model.name}\n"
+            msg=f"Training:\n - epochs: {self.config.epochs}\n - batch_size: {self.config.batch_size}\n - optimizer: {self.config.optimizer}\n - scheduler: {self.config.scheduler}\n - device: {self.config.device}\n - output_dir: {self.config.output_dir}\n - seed: {self.config.seed}\n - encoder_layers: {self.config.encoder_layers}\n - decoder_layers: {self.config.decoder_layers}\n - learning_rate: {self.config.lr}\n - gamma: {self.config.gamma}\n - patience: {self.config.patience}\n - num_workers: {self.config.num_workers}\n - training_dir: {self.training_dir}\n - model: {self.model.name}\n"
         )
 
         # TODO log to output dir with get_file_logger
@@ -176,14 +175,8 @@ class Trainer:
 
 
     def _set_device(self, device: str):
-        if device == "cuda":
-            self.device = torch.device("cuda")
-        elif device == "mps":
-            self.device = torch.device("mps")
-        elif device == "cpu":
-            self.device = torch.device("cpu")
-        else:
-            raise NotImplementedError
+        self.device = torch.device(device)
+        torch.set_default_device(self.device)
 
     def _save_model(self, model, dir_path: str):
         if not os.path.exists(dir_path):
@@ -250,12 +243,12 @@ class Trainer:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self._training_signature = (
-            str(datetime.datetime.now())[0:19].replace(" ", "_").replace(":", "-")
+            str(datetime.datetime.now())[5:19].replace(" ", "_").replace(":", "-")
         )
 
         training_dir = os.path.join(
             self.config.output_dir,
-            f"{self.model.name}_{self._training_signature}",
+            f"{self.model.name}_lr{self.config.lr}_{self._training_signature}",
         )
 
         self.training_dir = training_dir
