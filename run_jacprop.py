@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from models.coders import Structure
-from models.dfc import DFC, DFC_layer
+from models.jacprop import JacProp_layer, JacProp
 from src.datasets import MNIST
 from src.trainers import Trainer
 from src.utils import dotdict, set_device
@@ -22,7 +22,7 @@ def main():
         "lr": 1e-3,
         "batch_size": 128,
         "epochs": 200,
-        "runs": 10,
+        "runs": 1,
         "num_workers": 6,
         "optimizer": "Adam",
         "scheduler": "CosineAnnealingLR",
@@ -38,9 +38,9 @@ def main():
     # Train model
     for _ in range(config.runs):
         structure = Structure(
-            DFC_layer, config.encoder_layers, config.decoder_layers, nn.ReLU(), nn.Sigmoid()
+            JacProp_layer, config.encoder_layers, config.decoder_layers, nn.ReLU(), nn.Sigmoid()
         )
-        model = DFC(
+        model = JacProp(
             encoder=structure.encoder,
             decoder=structure.decoder,
             config=config,
